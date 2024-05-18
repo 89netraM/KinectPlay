@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using Microsoft.Kinect;
@@ -18,18 +17,10 @@ Console.CancelKeyPress += (s, e) =>
 using var bodyFrameReader = sensor.BodyFrameSource.OpenReader();
 var bodies = new Body[sensor.BodyFrameSource.BodyCount];
 
-(FaceFrameSource source, FaceFrameReader reader, FaceFrameResult? result)[] faces = [];
-faces = Enumerable
-    .Range(0, sensor.BodyFrameSource.BodyCount)
-    .Select(i =>
-    {
-        var source = new FaceFrameSource(sensor, 0, FaceFrameFeatures.RotationOrientation);
-        var reader = source.OpenReader();
-        reader.FrameArrived += (_, e) =>
-            faces[i].result = e.FrameReference.AcquireFrame().FaceFrameResult;
-        return (source, reader, (FaceFrameResult?)null);
-    })
-    .ToArray();
+var faceSource = new FaceFrameSource(sensor, 0, FaceFrameFeatures.RotationOrientation);
+var faceReader = faceSource.OpenReader();
+FaceFrameResult? face = null;
+faceReader.FrameArrived += (_, e) => face = e.FrameReference.AcquireFrame().FaceFrameResult;
 
 bodyFrameReader.FrameArrived += (_, e) =>
 {
@@ -44,8 +35,7 @@ bodyFrameReader.FrameArrived += (_, e) =>
             continue;
         }
 
-        faces[i].source.TrackingId = body.TrackingId;
-        var face = faces[i].result;
+        faceSource.TrackingId = body.TrackingId;
         var rot = QuaternionToRotation(face?.FaceRotationQuaternion ?? new());
 
         var pos = body.Joints[JointType.Head].Position;
