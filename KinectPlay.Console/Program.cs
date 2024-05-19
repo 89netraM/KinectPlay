@@ -1,26 +1,29 @@
 ﻿using System;
 using System.Numerics;
 using System.Text;
-using System.Threading.Tasks;
 using Microsoft.Kinect;
 using Microsoft.Kinect.Face;
+using Raylib_cs;
 using Vector4 = Microsoft.Kinect.Vector4;
 
 PointF pointFZero = new() { X = 0, Y = 0 };
 
 var sensor = KinectSensor.GetDefault();
 
-Console.Write("\x1b[?25l");
 Console.CancelKeyPress += (s, e) =>
 {
     sensor.Close();
-    Console.Write("\x1b[?25h");
+    Raylib.CloseWindow();
 };
 
 using var frameReader = sensor.OpenMultiSourceFrameReader(
-    FrameSourceTypes.Depth | FrameSourceTypes.Body
+    FrameSourceTypes.Depth | FrameSourceTypes.Color | FrameSourceTypes.Body
 );
 var bodies = new Body[sensor.BodyFrameSource.BodyCount];
+var color = new Color[
+    sensor.ColorFrameSource.FrameDescription.Height,
+    sensor.ColorFrameSource.FrameDescription.Width
+];
 
 var faceSource = new FaceFrameSource(
     sensor,
@@ -35,6 +38,9 @@ var colorToCameraSpace = new CameraSpacePoint[
     sensor.ColorFrameSource.FrameDescription.Height,
     sensor.ColorFrameSource.FrameDescription.Width
 ];
+
+var sb = new StringBuilder("Sensor open, waiting for availability");
+(Vector3 pos, Color color)? nose = null;
 
 frameReader.MultiSourceFrameArrived += (_, e) =>
 {
@@ -53,6 +59,18 @@ frameReader.MultiSourceFrameArrived += (_, e) =>
             );
         }
     }
+    unsafe
+    {
+        using var colorFrame = frame.ColorFrameReference.AcquireFrame();
+        fixed (Color* colorPointer = color)
+        {
+            colorFrame.CopyConvertedFrameDataToIntPtr(
+                (IntPtr)colorPointer,
+                (uint)color.Length * (uint)sizeof(Color),
+                ColorImageFormat.Rgba
+            );
+        }
+    }
     using var bodyFrame = frame.BodyFrameReference.AcquireFrame();
 
     bodyFrame.GetAndRefreshBodyData(bodies);
@@ -64,7 +82,7 @@ frameReader.MultiSourceFrameArrived += (_, e) =>
             continue;
         }
 
-        var sb = new StringBuilder("\x1b[G\x1b[K\x1b[A\x1b[K\x1b[A\x1b[K");
+        sb.Clear();
 
         var pos = body.Joints[JointType.Head].Position;
         sb.AppendLine(
@@ -80,28 +98,67 @@ frameReader.MultiSourceFrameArrived += (_, e) =>
             sb.AppendLine(
                 $"Nose Position: {nosePosCameraSpace.X, 6:0.000}, {nosePosCameraSpace.Y, 6:0.000}, {nosePosCameraSpace.Z, 6:0.000}"
             );
+            nose = (
+                new(nosePosCameraSpace.X, nosePosCameraSpace.Y, nosePosCameraSpace.Z),
+                color[(int)nosePos.Y, (int)nosePos.X]
+            );
         }
         else
         {
             sb.AppendLine("Nose Position: Missing!");
+            if (nose is var (p, _))
+            {
+                nose = (p, Color.PINK);
+            }
         }
 
         faceSource.TrackingId = body.TrackingId;
         var rot = QuaternionToRotation(face?.FaceRotationQuaternion ?? new());
         sb.Append(
-            $"Head Rotation: {rot.X, 6:0.000}, {rot.Y, 6:0.000}, {rot.Z, 6:0.000} (face {(face is not null ? "is" : "isn't")} available)"
+            $"Head Rotation: {rot.X, 7:0.000}, {rot.Y, 7:0.000}, {rot.Z, 7:0.000} (face {(face is not null ? "is" : "isn't")} available)"
         );
 
-        Console.Write(sb);
         break;
     }
 };
 
 sensor.Open();
 
-Console.WriteLine("Sensor open, waiting for availability\n\n");
+Raylib.InitWindow(
+    sensor.ColorFrameSource.FrameDescription.Width,
+    sensor.ColorFrameSource.FrameDescription.Height,
+    "KinectPlay"
+);
 
-await Task.Delay(-1);
+var font = Raylib.LoadFontEx(@"C:\Windows\Fonts\CascadiaMono.ttf", 20, null, 0);
+
+var camera = new Camera3D(
+    Vector3.Zero,
+    Vector3.UnitZ,
+    Vector3.UnitY,
+    sensor.ColorFrameSource.FrameDescription.HorizontalFieldOfView,
+    CameraType.CAMERA_PERSPECTIVE
+);
+
+while (!Raylib.WindowShouldClose())
+{
+    Raylib.BeginDrawing();
+    Raylib.ClearBackground(Color.BLACK);
+
+    Raylib.BeginMode3D(camera);
+    if (nose is var (p, c))
+    {
+        Raylib.DrawSphere(p, 0.01f, c);
+    }
+    Raylib.EndMode3D();
+
+    Raylib.DrawTextEx(font, sb.ToString(), new(0, 0), 20, 0, Color.WHITE);
+
+    Raylib.EndDrawing();
+}
+
+sensor.Close();
+Raylib.CloseWindow();
 
 // Borrowed from the SDK example code
 static Vector3 QuaternionToRotation(Vector4 rotQuaternion)
