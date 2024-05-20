@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Numerics;
-using System.Text;
 using Microsoft.Kinect;
 using Microsoft.Kinect.Face;
 using Raylib_cs;
@@ -25,12 +24,8 @@ var color = new Color[
     sensor.ColorFrameSource.FrameDescription.Width
 ];
 
-var faceSource = new FaceFrameSource(
-    sensor,
-    0,
-    FaceFrameFeatures.RotationOrientation | FaceFrameFeatures.PointsInColorSpace
-);
-var faceReader = faceSource.OpenReader();
+using var faceSource = new FaceFrameSource(sensor, 0, FaceFrameFeatures.RotationOrientation);
+using var faceReader = faceSource.OpenReader();
 FaceFrameResult? face = null;
 faceReader.FrameArrived += (_, e) => face = e.FrameReference.AcquireFrame().FaceFrameResult;
 
@@ -39,8 +34,8 @@ var colorToCameraSpace = new CameraSpacePoint[
     sensor.ColorFrameSource.FrameDescription.Width
 ];
 
-var sb = new StringBuilder("Sensor open, waiting for availability");
-(Vector3 pos, Color color)? nose = null;
+Vector3? head = null;
+Vector4? headRotation = null;
 
 frameReader.MultiSourceFrameArrived += (_, e) =>
 {
@@ -82,41 +77,10 @@ frameReader.MultiSourceFrameArrived += (_, e) =>
             continue;
         }
 
-        sb.Clear();
-
-        var pos = body.Joints[JointType.Head].Position;
-        sb.AppendLine(
-            $"Head Position: {pos.X, 6:0.000}, {pos.Y, 6:0.000}, {pos.Z, 6:0.000} (index {i}, id {body.TrackingId})"
-        );
-
-        if (
-            face?.FacePointsInColorSpace[FacePointType.Nose] is PointF nosePos
-            && nosePos != pointFZero
-        )
-        {
-            var nosePosCameraSpace = colorToCameraSpace[(int)nosePos.Y, (int)nosePos.X];
-            sb.AppendLine(
-                $"Nose Position: {nosePosCameraSpace.X, 6:0.000}, {nosePosCameraSpace.Y, 6:0.000}, {nosePosCameraSpace.Z, 6:0.000}"
-            );
-            nose = (
-                new(nosePosCameraSpace.X, nosePosCameraSpace.Y, nosePosCameraSpace.Z),
-                color[(int)nosePos.Y, (int)nosePos.X]
-            );
-        }
-        else
-        {
-            sb.AppendLine("Nose Position: Missing!");
-            if (nose is var (p, _))
-            {
-                nose = (p, Color.PINK);
-            }
-        }
+        head = ToVector(body.Joints[JointType.Head].Position);
 
         faceSource.TrackingId = body.TrackingId;
-        var rot = QuaternionToRotation(face?.FaceRotationQuaternion ?? new());
-        sb.Append(
-            $"Head Rotation: {rot.X, 7:0.000}, {rot.Y, 7:0.000}, {rot.Z, 7:0.000} (face {(face is not null ? "is" : "isn't")} available)"
-        );
+        headRotation = face?.FaceRotationQuaternion;
 
         break;
     }
@@ -129,8 +93,6 @@ Raylib.InitWindow(
     sensor.ColorFrameSource.FrameDescription.Height,
     "KinectPlay"
 );
-
-var font = Raylib.LoadFontEx(@"C:\Windows\Fonts\CascadiaMono.ttf", 20, null, 0);
 
 var camera = new Camera3D(
     Vector3.Zero,
@@ -145,14 +107,34 @@ while (!Raylib.WindowShouldClose())
     Raylib.BeginDrawing();
     Raylib.ClearBackground(Color.BLACK);
 
-    Raylib.BeginMode3D(camera);
-    if (nose is var (p, c))
+    if (head is Vector3 pos)
     {
-        Raylib.DrawSphere(p, 0.01f, c);
-    }
-    Raylib.EndMode3D();
+        if (headRotation is Vector4 rot)
+        {
+            var q = new Quaternion(rot.X, rot.Y, rot.Z, rot.W);
 
-    Raylib.DrawTextEx(font, sb.ToString(), new(0, 0), 20, 0, Color.WHITE);
+            var headDir = Vector3.Transform(-Vector3.UnitZ, q);
+            var upDir = Vector3.Transform(Vector3.UnitY, q);
+
+            camera.position = pos + headDir * 0.5f;
+            camera.target = pos;
+            camera.up = upDir;
+        }
+
+        Raylib.BeginMode3D(camera);
+
+        for (int y = 0; y < color.GetLength(0); y += 5)
+        for (int x = 0; x < color.GetLength(1); x += 5)
+        {
+            var c = color[y, x];
+            var p = ToVector(colorToCameraSpace[y, x]);
+            if ((p - pos).LengthSquared() < 0.09)
+            {
+                Raylib.DrawSphere(p, 0.005f, c);
+            }
+        }
+        Raylib.EndMode3D();
+    }
 
     Raylib.EndDrawing();
 }
@@ -160,23 +142,5 @@ while (!Raylib.WindowShouldClose())
 sensor.Close();
 Raylib.CloseWindow();
 
-// Borrowed from the SDK example code
-static Vector3 QuaternionToRotation(Vector4 rotQuaternion)
-{
-    float x = rotQuaternion.X;
-    float y = rotQuaternion.Y;
-    float z = rotQuaternion.Z;
-    float w = rotQuaternion.W;
-
-    // convert face rotation quaternion to Euler angles in degrees
-    float pitch =
-        (float)Math.Atan2(2 * ((y * z) + (w * x)), (w * w) - (x * x) - (y * y) + (z * z))
-        / (float)Math.PI
-        * 180.0f;
-    float yaw = (float)Math.Asin(2 * ((w * y) - (x * z))) / (float)Math.PI * 180.0f;
-    float roll =
-        (float)Math.Atan2(2 * ((x * y) + (w * z)), (w * w) + (x * x) - (y * y) - (z * z))
-        / (float)Math.PI
-        * 180.0f;
-    return new(pitch, yaw, roll);
-}
+static Vector3 ToVector(CameraSpacePoint cameraSpacePoint) =>
+    new(cameraSpacePoint.X, cameraSpacePoint.Y, cameraSpacePoint.Z);
