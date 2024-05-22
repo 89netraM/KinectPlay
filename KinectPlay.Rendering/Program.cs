@@ -1,42 +1,46 @@
 ﻿using System;
-using System.Drawing;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
 
-const string VertexShaderSource = """
-    #version 330 core
+const int PosLocation = 0;
+const int ColorLocation = 1;
+const int TransformationLocation = 2;
+string VertexShaderSource = $$"""
+    #version 430 core
 
-    layout (location = 0) in vec3 aPos;
-    layout (location = 1) in vec3 aColor;
+    layout (location = {{PosLocation}}) in vec3 pos;
+    layout (location = {{ColorLocation}}) in vec3 color;
+    layout (location = {{TransformationLocation}}) uniform mat4 transformation;
 
-    out vec4 ourColor;
+    out vec4 outColor;
 
     void main()
     {
-        gl_Position = vec4(aPos, 1.0f);
-        ourColor = vec4(aColor, 1.0f);
+        gl_Position = transformation * vec4(pos, 1.0f);
+        outColor = vec4(color, 1.0f);
     }
     """;
 const string FragmentShaderSource = """
-    #version 330 core
+    #version 430 core
 
-    in vec4 ourColor;
+    in vec4 outColor;
 
     out vec4 FragColor;
 
     void main()
     {
-        FragColor = ourColor;
+        FragColor = outColor;
     }
     """;
 
 Point[] points =
 [
+    new(new(0.0f, 0.0f, 0.0f), new(1.0f, 0.0f, 1.0f)),
     new(new(-0.5f, -0.5f, 0.0f), new(1.0f, 0.0f, 0.0f)),
     new(new(0.5f, -0.5f, 0.0f), new(0.0f, 1.0f, 0.0f)),
-    new(new(0.0f, 0.5f, 0.0f), new(0.0f, 0.0f, 1.0f)),
+    new(new(0.0f, 0.707f, 0.0f), new(0.0f, 0.0f, 1.0f)),
 ];
 
 var window = Window.Create(WindowOptions.Default with { Title = "Kinect Rendering", Size = new(1920, 1080) });
@@ -46,13 +50,21 @@ uint shader = 0;
 uint vertexArray = 0;
 uint vertexBuffer = 0;
 
+var transformation = Matrix4x4.Identity;
+
 window.Load += OnLoad;
 window.Render += OnRender;
+window.Resize += size => glGetter.Value.Viewport(size);
 
 window.Run();
 
 void OnLoad()
 {
+    var gl = glGetter.Value;
+
+    gl.Enable(EnableCap.DepthTest);
+    gl.PointSize(10.0f);
+
     shader = BuildShader();
 
     (vertexArray, vertexBuffer) = BuildVertex();
@@ -103,10 +115,17 @@ unsafe (uint, uint) BuildVertex()
     var vertexBuffer = gl.GenBuffer();
     gl.BindBuffer(BufferTargetARB.ArrayBuffer, vertexBuffer);
 
-    gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, (uint)sizeof(Point), 0);
-    gl.EnableVertexAttribArray(0);
-    gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, (uint)sizeof(Point), sizeof(Vector3));
-    gl.EnableVertexAttribArray(1);
+    gl.VertexAttribPointer(PosLocation, 3, VertexAttribPointerType.Float, false, (uint)sizeof(Point), 0);
+    gl.EnableVertexAttribArray(PosLocation);
+    gl.VertexAttribPointer(
+        ColorLocation,
+        3,
+        VertexAttribPointerType.Float,
+        false,
+        (uint)sizeof(Point),
+        sizeof(Vector3)
+    );
+    gl.EnableVertexAttribArray(ColorLocation);
 
     gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
 
@@ -117,6 +136,13 @@ unsafe (uint, uint) BuildVertex()
 
 void OnRender(double time)
 {
+    var projection = Matrix4x4.CreateOrthographic(window.Size.X, window.Size.Y, 0.0f, 1.0f);
+    transformation =
+        projection
+        * Matrix4x4.CreateRotationX((float)Math.PI / 4.0f)
+        * Matrix4x4.CreateRotationY((float)window.Time)
+        * Matrix4x4.CreateScale(100.0f);
+
     ClearScreen();
 
     BindVertexBufferData();
@@ -129,7 +155,7 @@ void ClearScreen()
     var gl = glGetter.Value;
 
     gl.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
-    gl.Clear(ClearBufferMask.ColorBufferBit);
+    gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 }
 
 unsafe void BindVertexBufferData()
@@ -153,9 +179,17 @@ void RenderVertex()
     var gl = glGetter.Value;
 
     gl.UseProgram(shader);
+    UpdateTransformation();
+
     gl.BindVertexArray(vertexArray);
-    gl.PointSize(10.0f);
     gl.DrawArrays(PrimitiveType.Points, 0, (uint)points.Length);
+}
+
+void UpdateTransformation()
+{
+    var gl = glGetter.Value;
+
+    gl.UniformMatrix4(TransformationLocation, 1, false, in transformation.M11);
 }
 
 [StructLayout(LayoutKind.Sequential, Pack = 0)]
