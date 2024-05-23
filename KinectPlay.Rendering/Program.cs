@@ -37,13 +37,20 @@ const string FragmentShaderSource = """
 
 Point[] points =
 [
-    new(new(0.0f, 0.0f, 0.0f), new(1.0f, 0.0f, 1.0f)),
-    new(new(-0.5f, -0.5f, 0.0f), new(1.0f, 0.0f, 0.0f)),
-    new(new(0.5f, -0.5f, 0.0f), new(0.0f, 1.0f, 0.0f)),
-    new(new(0.0f, 0.707f, 0.0f), new(0.0f, 0.0f, 1.0f)),
+    new(new(0.0f, 0.0f, 1.0f), new(1.0f, 0.0f, 1.0f)),
+    new(new(-0.5f, -0.5f, 1.0f), new(1.0f, 0.0f, 0.0f)),
+    new(new(0.5f, -0.5f, 1.0f), new(0.0f, 1.0f, 0.0f)),
+    new(new(0.0f, 0.707f, 1.0f), new(0.0f, 0.0f, 1.0f)),
 ];
 
-var window = Window.Create(WindowOptions.Default with { Title = "Kinect Rendering", Size = new(1920, 1080) });
+var window = Window.Create(
+    WindowOptions.Default with
+    {
+        Title = "Kinect Rendering",
+        Size = new(1920, 1080),
+        VSync = false,
+    }
+);
 var glGetter = new Lazy<GL>(window.CreateOpenGL);
 
 uint shader = 0;
@@ -63,7 +70,8 @@ void OnLoad()
     var gl = glGetter.Value;
 
     gl.Enable(EnableCap.DepthTest);
-    gl.PointSize(10.0f);
+    gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    gl.PointSize(1.0f);
 
     shader = BuildShader();
 
@@ -136,12 +144,14 @@ unsafe (uint, uint) BuildVertex()
 
 void OnRender(double time)
 {
-    var projection = Matrix4x4.CreateOrthographic(window.Size.X, window.Size.Y, 0.0f, 1.0f);
-    transformation =
-        projection
-        * Matrix4x4.CreateRotationX((float)Math.PI / 4.0f)
-        * Matrix4x4.CreateRotationY((float)window.Time)
-        * Matrix4x4.CreateScale(100.0f);
+    var view = Matrix4x4.CreateLookAt(Vector3.Zero, new(0.0f, 0.0f, 1.0f), Vector3.UnitY);
+    var projection = Matrix4x4.CreatePerspectiveFieldOfView(
+        (float)Math.PI / 2.0f,
+        (float)window.Size.X / window.Size.Y,
+        0.1f,
+        10.0f
+    );
+    transformation = view * projection;
 
     ClearScreen();
 
@@ -154,7 +164,6 @@ void ClearScreen()
 {
     var gl = glGetter.Value;
 
-    gl.ClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 }
 
