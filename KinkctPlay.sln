@@ -5,8 +5,6 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KinectPlay.Console", "KinectPlay.Console\KinectPlay.Console.csproj", "{500CC744-25AF-4038-88E4-EDECED8DC40C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "KinectPlay.Rendering", "KinectPlay.Rendering\KinectPlay.Rendering.csproj", "{60DF2352-031F-445A-A7D2-27038A17AF5D}"
-EndProject
 Global
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -32,17 +30,5 @@ Global
 		{500CC744-25AF-4038-88E4-EDECED8DC40C}.Release|x64.Build.0 = Release|Any CPU
 		{500CC744-25AF-4038-88E4-EDECED8DC40C}.Release|x86.ActiveCfg = Release|Any CPU
 		{500CC744-25AF-4038-88E4-EDECED8DC40C}.Release|x86.Build.0 = Release|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Debug|x64.Build.0 = Debug|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Debug|x86.Build.0 = Debug|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Release|Any CPU.Build.0 = Release|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Release|x64.ActiveCfg = Release|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Release|x64.Build.0 = Release|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Release|x86.ActiveCfg = Release|Any CPU
-		{60DF2352-031F-445A-A7D2-27038A17AF5D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
