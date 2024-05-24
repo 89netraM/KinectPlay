@@ -2,12 +2,15 @@
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using KinectPlay.Console;
 using Microsoft.Kinect;
 using Microsoft.Kinect.Face;
 using Silk.NET.OpenGL;
 using Silk.NET.Windowing;
 using ColorF = System.Numerics.Vector4;
+using Shader = KinectPlay.Console.Shader;
 using Vector4 = Microsoft.Kinect.Vector4;
+using VertexArray = KinectPlay.Console.VertexArray;
 
 PointF pointFZero = new() { X = 0, Y = 0 };
 
@@ -102,41 +105,13 @@ sensor.Open();
 
 const int PosLocation = 0;
 const int ColorLocation = 1;
-const int TransformationLocation = 2;
-string VertexShaderSource = $$"""
-    #version 430 core
-
-    layout (location = {{PosLocation}}) in vec3 pos;
-    layout (location = {{ColorLocation}}) in vec4 color;
-    layout (location = {{TransformationLocation}}) uniform mat4 transformation;
-
-    out vec4 outColor;
-
-    void main()
-    {
-        gl_Position = transformation * vec4(pos, 1.0f);
-        outColor = color;
-    }
-    """;
-const string FragmentShaderSource = """
-    #version 430 core
-
-    in vec4 outColor;
-
-    out vec4 FragColor;
-
-    void main()
-    {
-        FragColor = outColor;
-    }
-    """;
 
 var window = Window.Create(WindowOptions.Default with { Title = "KinectPlay", Size = new(1920, 1080), VSync = false, });
 var glGetter = new Lazy<GL>(window.CreateOpenGL);
 
-uint shader = 0;
-uint vertexArray = 0;
-uint vertexBuffer = 0;
+Shader? shader = null;
+VertexArray? vertexArray = null;
+VertexBuffer? vertexBuffer = null;
 
 var view = Matrix4x4.CreateLookAt(Vector3.Zero, new(0.0f, 0.0f, 1.0f), Vector3.UnitY);
 var projection = Matrix4x4.CreatePerspectiveFieldOfView(
@@ -169,71 +144,30 @@ void OnLoad()
     gl.ClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     gl.PointSize(3.0f);
 
-    shader = BuildShader();
+    shader = new(gl);
 
     (vertexArray, vertexBuffer) = BuildVertex();
 }
 
-uint BuildShader()
+unsafe (VertexArray, VertexBuffer) BuildVertex()
 {
     var gl = glGetter.Value;
 
-    var vertexShader = gl.CreateShader(ShaderType.VertexShader);
-    gl.ShaderSource(vertexShader, VertexShaderSource);
-    gl.CompileShader(vertexShader);
-    if (gl.GetShaderInfoLog(vertexShader) is string vertexError and not "")
-    {
-        throw new Exception($"Vertex error, {vertexError}");
-    }
+    var vertexArray = new VertexArray(gl);
+    using var a = vertexArray.Bind();
 
-    var fragmentShader = gl.CreateShader(ShaderType.FragmentShader);
-    gl.ShaderSource(fragmentShader, FragmentShaderSource);
-    gl.CompileShader(fragmentShader);
-    if (gl.GetShaderInfoLog(fragmentShader) is string fragmentError and not "")
-    {
-        throw new Exception($"Fragment error, {fragmentError}");
-    }
+    var vertexBuffer = new VertexBuffer(gl);
+    using var b = vertexBuffer.Bind();
 
-    var shader = gl.CreateProgram();
-    gl.AttachShader(shader, vertexShader);
-    gl.AttachShader(shader, fragmentShader);
-    gl.LinkProgram(shader);
-    if (gl.GetProgramInfoLog(shader) is string programError and not "")
-    {
-        throw new Exception($"Program error, {programError}");
-    }
-
-    gl.DeleteShader(vertexShader);
-    gl.DeleteShader(fragmentShader);
-
-    return shader;
-}
-
-unsafe (uint, uint) BuildVertex()
-{
-    var gl = glGetter.Value;
-
-    var vertexArray = gl.GenVertexArray();
-    gl.BindVertexArray(vertexArray);
-
-    var vertexBuffer = gl.GenBuffer();
-    gl.BindBuffer(BufferTargetARB.ArrayBuffer, vertexBuffer);
-
-    gl.VertexAttribPointer(PosLocation, 3, VertexAttribPointerType.Float, false, (uint)sizeof(Point), 0);
-    gl.EnableVertexAttribArray(PosLocation);
-    gl.VertexAttribPointer(
+    vertexArray.EnableAttributePointer(PosLocation, 3, VertexAttribPointerType.Float, false, sizeof(Point), 0);
+    vertexArray.EnableAttributePointer(
         ColorLocation,
         4,
         VertexAttribPointerType.Float,
         false,
-        (uint)sizeof(Point),
+        sizeof(Point),
         sizeof(Vector3)
     );
-    gl.EnableVertexAttribArray(ColorLocation);
-
-    gl.BindBuffer(BufferTargetARB.ArrayBuffer, 0);
-
-    gl.BindVertexArray(0);
 
     return (vertexArray, vertexBuffer);
 }
@@ -263,26 +197,18 @@ unsafe void BindVertexBufferData()
 
     var gl = glGetter.Value;
 
-    gl.BindBuffer(BufferTargetARB.ArrayBuffer, vertexBuffer);
-    fixed (Point* p = points)
-    {
-        gl.BufferData(
-            BufferTargetARB.ArrayBuffer,
-            (nuint)(points.Length * sizeof(Point)),
-            p,
-            BufferUsageARB.StaticDraw
-        );
-    }
+    using var _ = vertexBuffer!.Bind();
+    vertexBuffer!.BufferData(points);
 }
 
 void RenderVertex()
 {
     var gl = glGetter.Value;
 
-    gl.UseProgram(shader);
+    using var s = shader!.Use();
     UpdateTransformation();
 
-    gl.BindVertexArray(vertexArray);
+    using var a = vertexArray!.Bind();
     gl.DrawArrays(PrimitiveType.Points, 0, (uint)points.Length);
 }
 
@@ -304,7 +230,7 @@ void UpdateTransformation()
     }
     var transformation = view * projection;
 
-    gl.UniformMatrix4(TransformationLocation, 1, false, in transformation.M11);
+    shader!.BindTransformation(transformation);
 }
 
 static Vector3 ToVector(CameraSpacePoint cameraSpacePoint) =>
