@@ -23,10 +23,10 @@ internal class VertexBuffer
         return unBinder.Value;
     }
 
-    public unsafe void BufferData<T>(T[] data)
+    public unsafe void BufferData<T>(ReadOnlyMemory<T> data)
         where T : unmanaged
     {
-        fixed (T* pointer = data)
+        fixed (T* pointer = data.Span)
         {
             gl.BufferData(
                 BufferTargetARB.ArrayBuffer,

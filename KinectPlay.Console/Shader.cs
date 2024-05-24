@@ -6,9 +6,9 @@ namespace KinectPlay.Console;
 
 internal class Shader
 {
-    private const int PositionLocation = 0;
-    private const int ColorLocation = 1;
-    private const int TransformationLocation = 2;
+    public const int PositionLocation = 0;
+    public const int ColorLocation = 1;
+    public const int TransformationLocation = 2;
     private readonly string VertexShaderSource = $$"""
         #version 430 core
 
