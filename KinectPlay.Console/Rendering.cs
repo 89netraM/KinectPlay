@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using System.Threading.Channels;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
 
@@ -12,9 +13,8 @@ internal class Rendering
     private const float VerticalCameraOffset = -0.1f;
     private const float CameraDistance = 0.5f;
 
-    public GrowingMemory<Point> Points { get; } = [new(new(0.0f, 0.0f, 1.0f), new(1.0f, 0.0f, 1.0f, 1.0f))];
-    public bool ReloadPoints { get; set; } = true;
-    private uint renderedPointCount = 0;
+    private readonly ChannelReader<ReadOnlyMemory<Point>> pointsReader;
+    private uint renderedPointsCount = 0;
 
     private Matrix4x4 view = Matrix4x4.CreateLookAt(Vector3.Zero, new(0.0f, 0.0f, 1.0f), Vector3.UnitY);
     private Matrix4x4 projection = Matrix4x4.Identity;
@@ -24,9 +24,11 @@ internal class Rendering
     private readonly VertexArray vertexArray;
     private readonly VertexBuffer vertexBuffer;
 
-    public unsafe Rendering(GL gl)
+    public unsafe Rendering(GL gl, ChannelReader<ReadOnlyMemory<Point>> pointsReader)
     {
         this.gl = gl;
+        this.pointsReader = pointsReader;
+
         gl.Enable(EnableCap.DepthTest);
         gl.ClearColor(BackgroundColor.X, BackgroundColor.Y, BackgroundColor.Z, BackgroundColor.W);
         gl.PointSize(PointSize);
@@ -84,16 +86,15 @@ internal class Rendering
 
     private unsafe void BindVertexBufferData()
     {
-        if (!ReloadPoints)
+        if (!pointsReader.TryRead(out var points))
         {
             return;
         }
 
         using var _ = vertexBuffer.Bind();
-        vertexBuffer.BufferData(Points.Buffer);
+        vertexBuffer.BufferData(points);
 
-        ReloadPoints = false;
-        renderedPointCount = (uint)Points.Count;
+        renderedPointsCount = (uint)points.Length;
     }
 
     private void RenderVertex(Head? head)
@@ -102,7 +103,7 @@ internal class Rendering
         UpdateTransformation(head);
 
         using var a = vertexArray.Bind();
-        gl.DrawArrays(PrimitiveType.Points, 0, renderedPointCount);
+        gl.DrawArrays(PrimitiveType.Points, 0, renderedPointsCount);
     }
 
     private void UpdateTransformation(Head? head)
@@ -128,10 +129,4 @@ internal class Rendering
 
         shader.BindTransformation(transformation);
     }
-}
-
-internal readonly struct Head(Vector3 center, Quaternion? rotation)
-{
-    public readonly Vector3 Center = center;
-    public readonly Quaternion? Rotation = rotation;
 }
