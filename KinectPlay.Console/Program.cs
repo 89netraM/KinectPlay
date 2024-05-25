@@ -16,10 +16,9 @@ var window = Window.Create(WindowOptions.Default with { Title = "KinectPlay", Si
 window.Load += () =>
 {
     rendering = new Rendering(GL.GetApi(window), pointsChannel.Reader);
-    rendering.ResizeCamera(window.Size, sensor.HorizontalFov, sensor.MinimumDistance, sensor.MaximumDistance);
+    rendering.ResizeCamera(window.Size, sensor.HorizontalFov);
 };
-window.Render += deltaTime => rendering?.Render(sensor.Head);
-window.Resize += size =>
-    rendering?.ResizeCamera(size, sensor.HorizontalFov, sensor.MinimumDistance, sensor.MaximumDistance);
+window.Render += deltaTime => rendering?.Render((float)deltaTime, sensor.Head);
+window.Resize += size => rendering?.ResizeCamera(size, sensor.HorizontalFov);
 
 window.Run();

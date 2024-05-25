@@ -9,14 +9,18 @@ namespace KinectPlay.Console;
 internal class Rendering
 {
     private static readonly Vector4 BackgroundColor = new(0.0f, 0.0f, 0.0f, 1.0f);
-    private const float PointSize = 3.0f;
+    private const float PointSize = 5.0f;
     private const float VerticalCameraOffset = -0.1f;
     private const float CameraDistance = 0.5f;
+    private const float CameraTargetSpeedInMetersPerSecond = 0.5f;
+    private const float CameraRotationSpeedInRadiansPerSecond = (float)Math.PI / 2.0f;
 
     private readonly ChannelReader<ReadOnlyMemory<Point>> pointsReader;
     private uint renderedPointsCount = 0;
 
-    private Matrix4x4 view = Matrix4x4.CreateLookAt(Vector3.Zero, new(0.0f, 0.0f, 1.0f), Vector3.UnitY);
+    private Head? lastSeenHead = null;
+    private Quaternion cameraRotation = Quaternion.Identity;
+    private Vector3 cameraTarget = new(0.0f, 0.0f, 1.0f);
     private Matrix4x4 projection = Matrix4x4.Identity;
 
     private readonly GL gl;
@@ -59,29 +63,24 @@ internal class Rendering
         );
     }
 
-    public void ResizeCamera(
-        Vector2D<int> screenSize,
-        float fovDegrees,
-        float minDistanceMillimeters,
-        float maxDistanceMilliliters
-    )
+    public void ResizeCamera(Vector2D<int> screenSize, float fovDegrees)
     {
         gl.Viewport(screenSize);
         projection = Matrix4x4.CreatePerspectiveFieldOfView(
             (float)Math.PI * fovDegrees / 180.0f,
             (float)screenSize.X / screenSize.Y,
-            minDistanceMillimeters / 1000.0f,
-            maxDistanceMilliliters / 1000.0f
+            0.1f,
+            100.0f
         );
     }
 
-    public void Render(Head? head)
+    public void Render(float deltaTime, Head? head)
     {
         gl.Clear(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit);
 
         BindVertexBufferData();
 
-        RenderVertex(head);
+        RenderVertex(deltaTime, head);
     }
 
     private unsafe void BindVertexBufferData()
@@ -97,36 +96,59 @@ internal class Rendering
         renderedPointsCount = (uint)points.Length;
     }
 
-    private void RenderVertex(Head? head)
+    private void RenderVertex(float deltaTime, Head? head)
     {
         using var s = shader.Use();
-        UpdateTransformation(head);
+        UpdateTransformation(deltaTime, head);
 
         using var a = vertexArray.Bind();
         gl.DrawArrays(PrimitiveType.Points, 0, renderedPointsCount);
     }
 
-    private void UpdateTransformation(Head? head)
+    private void UpdateTransformation(float deltaTime, Head? head)
     {
-        if (head is Head h)
+        if (head is Head newHead)
         {
-            var cameraPos = Vector3.Zero;
-            var cameraUp = Vector3.UnitY;
-            if (h.Rotation is Quaternion hRotation)
-            {
-                var rotation = Matrix4x4.CreateFromQuaternion(hRotation);
-                cameraPos = h.Center - Vector3.Transform(CameraDistance * Vector3.UnitZ, rotation);
-                cameraUp = Vector3.TransformNormal(cameraUp, rotation);
-            }
-
-            view = Matrix4x4.CreateLookAt(
-                cameraPos + cameraUp * VerticalCameraOffset,
-                h.Center + cameraUp * VerticalCameraOffset,
-                cameraUp
-            );
+            lastSeenHead = newHead;
         }
+
+        if (lastSeenHead is Head h)
+        {
+            cameraTarget = Lerp(cameraTarget, h.Center, CameraTargetSpeedInMetersPerSecond * deltaTime);
+
+            if (h.Rotation is Quaternion targetCameraRotation)
+            {
+                cameraRotation = Quaternion.Lerp(
+                    cameraRotation,
+                    targetCameraRotation,
+                    CameraRotationSpeedInRadiansPerSecond * deltaTime
+                );
+            }
+        }
+
+        var rotationMatrix = Matrix4x4.CreateFromQuaternion(cameraRotation);
+        var cameraUp = Vector3.TransformNormal(Vector3.UnitY, rotationMatrix);
+        var cameraPosition = cameraTarget - Vector3.Transform(CameraDistance * Vector3.UnitZ, rotationMatrix);
+        var view = Matrix4x4.CreateLookAt(
+            cameraPosition + cameraUp * VerticalCameraOffset,
+            cameraTarget + cameraUp * VerticalCameraOffset,
+            cameraUp
+        );
         var transformation = view * projection;
 
         shader.BindTransformation(transformation);
+    }
+
+    private static Vector3 Lerp(Vector3 from, Vector3 to, float step)
+    {
+        var diff = to - from;
+        var distance = diff.Length();
+        if (distance < step)
+        {
+            return to;
+        }
+
+        var direction = diff / distance;
+        return from + direction * step;
     }
 }

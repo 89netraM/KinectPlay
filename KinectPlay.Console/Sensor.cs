@@ -24,8 +24,6 @@ internal class Sensor : IDisposable
     public Head? Head { get; private set; } = null;
 
     public float HorizontalFov => sensor.ColorFrameSource.FrameDescription.HorizontalFieldOfView;
-    public float MinimumDistance => sensor.DepthFrameSource.DepthMinReliableDistance;
-    public float MaximumDistance => sensor.DepthFrameSource.DepthMaxReliableDistance;
 
     public Sensor(ChannelWriter<ReadOnlyMemory<Point>> pointsWriter)
     {
